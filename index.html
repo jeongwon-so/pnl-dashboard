@@ -14,15 +14,21 @@
 <title>엑셀 손익 대시보드</title>
 <style>
   :root {
-    --bg: #f4f6f9;
-    --panel: #ffffff;
-    --ink: #1c2430;
-    --sub: #5b6675;
-    --line: #dfe4ea;
-    --accent: #0072B2;
-    --accent-soft: #e6f1f8;
-    --neg: #c0392b;
-    --bar: #cfe3f1;
+    color-scheme: dark;
+    --bg: #000000;
+    --panel: #000000;
+    --ink: #ff10f0;          /* 형광분홍: 화면의 모든 글자 */
+    --sub: #ff10f0;
+    --line: #6b0a63;         /* 테두리·구분선: 어두운 분홍 */
+    --accent: #ff10f0;
+    --accent-soft: #2a0428;
+    --neg: #ff10f0;
+    --bar: #3d0838;          /* 표 안 막대(글자 뒤) */
+    --thead: #160314;
+    --track: #1a0a18;
+    --grid: #4a0d44;
+    --chart-text: #ff10f0;
+    --focus: #ff10f0;
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
@@ -42,17 +48,17 @@
   .top p.basis { color: var(--ink); font-size: 15px; font-weight: 600; }
 
   button, select {
-    font: inherit; color: inherit;
-    border: 1px solid var(--line); border-radius: 8px; background: #fff;
+    font: inherit; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
     padding: 7px 12px;
   }
   button { cursor: pointer; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary { background: var(--panel); border: 2px solid var(--accent); color: var(--ink); font-weight: 700; }
   button:disabled { opacity: .45; cursor: not-allowed; }
-  button:focus-visible, select:focus-visible, .drop:focus-visible { outline: 3px solid #8ec5ea; outline-offset: 2px; }
+  button:focus-visible, select:focus-visible, .drop:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
   .drop {
-    border: 2px dashed #9db4c7; border-radius: 12px; background: #fff;
+    border: 2px dashed var(--accent); border-radius: 12px; background: var(--panel);
     padding: 34px 16px; text-align: center; cursor: pointer; transition: background .15s, border-color .15s;
   }
   .drop strong { font-size: 17px; }
@@ -64,8 +70,8 @@
 
   #msg { margin: 12px 0 0; }
   .msg { padding: 10px 14px; border-radius: 8px; font-size: 13px; }
-  .msg.err { background: #fdecea; color: #8a1f14; border: 1px solid #f3c1bb; }
-  .msg.info { background: var(--accent-soft); color: #14506f; border: 1px solid #bcd9ea; }
+  .msg.err { background: var(--accent-soft); color: var(--ink); border: 1px solid var(--accent); font-weight: 700; }
+  .msg.info { background: var(--accent-soft); color: var(--ink); border: 1px solid var(--line); }
 
   .filters {
     display: flex; flex-wrap: wrap; gap: 12px; align-items: end;
@@ -91,25 +97,25 @@
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
   .panel h2 .unit { font-size: 12px; font-weight: 400; color: var(--sub); margin-left: 6px; }
   .none { color: var(--sub); margin: 6px 0; }
-  .none.ok { display: inline-block; padding: 8px 14px; background: #eaf6ef; color: #1e6b3a; border-radius: 8px; font-weight: 600; }
+  .none.ok { display: inline-block; padding: 8px 14px; background: var(--accent-soft); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; font-weight: 600; }
 
   .chart { width: 100%; height: auto; display: block; }
-  .chart .grid { stroke: #e6eaef; stroke-width: 1; }
-  .chart .zero { stroke: #8a94a3; stroke-width: 1; }
-  .chart text { fill: #4b5563; font-size: 11.5px; font-family: inherit; }
-  .chart .val { font-size: 11px; fill: #1c2430; }
+  .chart .grid { stroke: var(--grid); stroke-width: 1; }
+  .chart .zero { stroke: var(--chart-text); stroke-width: 1; }
+  .chart text { fill: var(--chart-text); font-size: 11.5px; font-family: inherit; }
+  .chart .val { font-size: 11px; fill: var(--chart-text); }
 
   .tablewrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
   th, td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
-  th { font-size: 12px; color: var(--sub); font-weight: 600; background: #f8fafc; }
+  th { font-size: 12px; color: var(--sub); font-weight: 600; background: var(--thead); }
   th:first-child, td:first-child { text-align: center; width: 48px; }
   td.l, th.l { text-align: left; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; }
   td.l:first-child, th.l:first-child { text-align: left; width: auto; }   /* 순위 열이 아닌 이름 열 */
   td.barcell { background: linear-gradient(to right, var(--bar) var(--w, 0%), transparent var(--w, 0%)); }
   .neg { color: var(--neg); }
 
-  .stack { display: flex; height: 26px; border-radius: 6px; overflow: hidden; background: #eef1f5; margin-bottom: 12px; }
+  .stack { display: flex; height: 26px; border-radius: 6px; overflow: hidden; background: var(--track); margin-bottom: 12px; }
   .stack span { display: block; height: 100%; min-width: 0; }
   .chip { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 7px; vertical-align: -1px; }
 
@@ -125,6 +131,12 @@
 
   @media print {
     @page { size: A4; margin: 12mm; }
+    :root {
+      color-scheme: light;
+      --bg: #ffffff; --panel: #ffffff; --ink: #1c2430; --sub: #5b6675; --line: #dfe4ea;
+      --accent: #0072B2; --accent-soft: #e6f1f8; --neg: #c0392b; --bar: #cfe3f1;
+      --thead: #f8fafc; --track: #eef1f5; --grid: #e6eaef; --chart-text: #4b5563;
+    }
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body { background: #fff; font-size: 11.5px; }
     .wrap { max-width: none; padding: 0; }
