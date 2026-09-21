@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<!--
+  데이터가 밖으로 나갈 수 없도록 막는 보안 정책(CSP)
+  - connect-src 'none' : fetch / XHR / WebSocket 등 모든 외부 통신 차단
+  - default-src 'none' : 명시하지 않은 모든 자원(이미지·폰트·프레임 등) 차단
+  - form-action 'none' : 폼 전송 차단
+  - script-src 'self'  : vendor 폴더의 SheetJS만 실행 (index.html 안의 스크립트는 'unsafe-inline')
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>엑셀 손익 대시보드</title>
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --panel: #ffffff;
+    --ink: #1c2430;
+    --sub: #5b6675;
+    --line: #dfe4ea;
+    --accent: #0072B2;
+    --accent-soft: #e6f1f8;
+    --neg: #c0392b;
+    --bar: #cfe3f1;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 22px; margin: 0; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+  .top p { margin: 2px 0 0; color: var(--sub); font-size: 13px; }
+
+  button, select {
+    font: inherit; color: inherit;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff;
+    padding: 7px 12px;
+  }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button:focus-visible, select:focus-visible, .drop:focus-visible { outline: 3px solid #8ec5ea; outline-offset: 2px; }
+
+  .drop {
+    border: 2px dashed #9db4c7; border-radius: 12px; background: #fff;
+    padding: 34px 16px; text-align: center; cursor: pointer; transition: background .15s, border-color .15s;
+  }
+  .drop strong { font-size: 17px; }
+  .drop p { margin: 6px 0 0; color: var(--sub); }
+  .drop.over { background: var(--accent-soft); border-color: var(--accent); }
+  .drop.compact { padding: 10px 14px; text-align: left; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .drop.compact strong { font-size: 14px; }
+  .drop.compact p { margin: 0; }
+
+  #msg { margin: 12px 0 0; }
+  .msg { padding: 10px 14px; border-radius: 8px; font-size: 13px; }
+  .msg.err { background: #fdecea; color: #8a1f14; border: 1px solid #f3c1bb; }
+  .msg.info { background: var(--accent-soft); color: #14506f; border: 1px solid #bcd9ea; }
+
+  .filters {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: end;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 14px; margin: 14px 0;
+  }
+  .filters label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--sub); }
+  .filters select { min-width: 140px; color: var(--ink); font-size: 14px; }
+  .filters .spacer { flex: 1; }
+
+  .printhead { display: none; margin-bottom: 10px; }
+  .printhead h1 { font-size: 20px; }
+  .printhead p { margin: 2px 0 0; font-size: 12px; color: #444; }
+
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .card .k { color: var(--sub); font-size: 12.5px; }
+  .card .v { font-size: 26px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .card .v small { font-size: 12px; font-weight: 400; color: var(--sub); margin-left: 3px; }
+  .card .s { color: var(--sub); font-size: 12px; margin-top: 2px; }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .panel h2 .unit { font-size: 12px; font-weight: 400; color: var(--sub); margin-left: 6px; }
+  .none { color: var(--sub); margin: 6px 0; }
+  .none.ok { display: inline-block; padding: 8px 14px; background: #eaf6ef; color: #1e6b3a; border-radius: 8px; font-weight: 600; }
+
+  .chart { width: 100%; height: auto; display: block; }
+  .chart .grid { stroke: #e6eaef; stroke-width: 1; }
+  .chart .zero { stroke: #8a94a3; stroke-width: 1; }
+  .chart text { fill: #4b5563; font-size: 11.5px; font-family: inherit; }
+  .chart .val { font-size: 11px; fill: #1c2430; }
+
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  th { font-size: 12px; color: var(--sub); font-weight: 600; background: #f8fafc; }
+  th:first-child, td:first-child { text-align: center; width: 48px; }
+  td.l, th.l { text-align: left; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; }
+  td.l:first-child, th.l:first-child { text-align: left; width: auto; }   /* 순위 열이 아닌 이름 열 */
+  td.barcell { background: linear-gradient(to right, var(--bar) var(--w, 0%), transparent var(--w, 0%)); }
+  .neg { color: var(--neg); }
+
+  .stack { display: flex; height: 26px; border-radius: 6px; overflow: hidden; background: #eef1f5; margin-bottom: 12px; }
+  .stack span { display: block; height: 100%; min-width: 0; }
+  .chip { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 7px; vertical-align: -1px; }
+
+  .callout { background: var(--accent-soft); border-radius: 8px; padding: 9px 14px; margin-bottom: 12px; font-size: 14px; }
+  .callout b { font-size: 18px; }
+
+  .notes { color: var(--sub); font-size: 12px; margin-top: 4px; }
+  .notes ul { margin: 4px 0 0; padding-left: 18px; }
+
+  @media (max-width: 820px) {
+    .cards { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media print {
+    @page { size: A4; margin: 12mm; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { background: #fff; font-size: 11.5px; }
+    .wrap { max-width: none; padding: 0; }
+    .no-print { display: none !important; }
+    .printhead { display: block; }
+    .cards { grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .card { padding: 10px 12px; }
+    .card, .panel { break-inside: avoid; box-shadow: none; }
+    .panel { padding: 10px 12px; margin-bottom: 10px; }
+    .card .v { font-size: 20px; }
+    .tablewrap { overflow: visible; }
+    th, td { padding: 4px 8px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top no-print">
+    <div>
+      <h1>엑셀 손익 대시보드</h1>
+      <p>엑셀 파일은 이 브라우저 안에서만 읽습니다. 서버로 보내거나 저장하지 않습니다.</p>
+    </div>
+    <button id="printBtn" class="primary" type="button" disabled>보고서 인쇄</button>
+  </header>
+
+  <section id="drop" class="drop no-print" tabindex="0" role="button" aria-label="엑셀 파일 선택">
+    <strong id="dropTitle">엑셀 파일을 여기로 끌어다 놓으세요</strong>
+    <p id="dropSub">또는 이 칸을 눌러 파일을 고르세요 (.xlsx · 시트 이름 “품목손익”)</p>
+    <input id="file" type="file" accept=".xlsx,.xlsm,.xls" hidden>
+  </section>
+
+  <div id="msg" class="no-print" role="alert" aria-live="polite"></div>
+
+  <main id="dash" hidden>
+    <div class="printhead">
+      <h1>손익 보고서</h1>
+      <p id="printMeta"></p>
+    </div>
+
+    <section class="filters no-print" aria-label="필터">
+      <label>연도 <select id="fYear"></select></label>
+      <label>채널 <select id="fChannel"></select></label>
+      <label>대분류 <select id="fCat1"></select></label>
+      <button id="resetBtn" type="button">필터 초기화</button>
+      <span class="spacer"></span>
+      <span id="rowCount" class="notes"></span>
+    </section>
+
+    <div id="empty" class="panel" hidden><p class="none">선택한 조건에 맞는 데이터가 없습니다. 필터를 바꿔 보세요.</p></div>
+
+    <div id="panels">
+      <section class="cards" id="cards" aria-label="요약"></section>
+
+      <section class="panel">
+        <h2>월별 NNR 추이<span class="unit">단위: 백만원</span></h2>
+        <div id="monthly"></div>
+      </section>
+
+      <section class="panel">
+        <h2>채널별 구성 (NNR 기준)<span class="unit">단위: 백만원</span></h2>
+        <div id="channel"></div>
+      </section>
+
+      <section class="panel">
+        <h2>품목 TOP 10 (NNR 기준)<span class="unit">단위: 백만원</span></h2>
+        <div id="items"></div>
+      </section>
+
+      <section class="panel">
+        <h2>MC%가 마이너스인 품목<span class="unit">단위: 백만원</span></h2>
+        <div id="negatives"></div>
+      </section>
+
+      <section class="panel">
+        <h2>거래처 TOP 10 (NNR 기준)<span class="unit">단위: 백만원</span></h2>
+        <div id="customers"></div>
+      </section>
+
+      <div class="notes" id="notes"></div>
+    </div>
+  </main>
+
+</div>
+
+<!-- 같은 폴더의 vendor 폴더에서만 불러옵니다 (CDN 사용 안 함) -->
+<script src="vendor/xlsx.full.min.js"></script>
+<script>
+'use strict';
+
+/* ───────── 설정 ───────── */
+const UNIT = 1e6;              // 화면 표시 단위: 백만원 (엑셀 금액이 원 단위라는 가정)
+const SHEET_NAME = '품목손익';
+const HEADER_ROW = 3;          // 1행 제목, 2행 주의문구, 3행 머리글
+const PALETTE = ['#0072B2', '#E69F00', '#009E73', '#D55E00', '#CC79A7', '#56B4E9', '#7f7f7f'];
+
+// 열 이름(공백·따옴표·대소문자 무시). 왼쪽이 내부 키, 오른쪽이 인식하는 머리글 이름들
+const COLS = {
+  ym: ['연도월', '년월', '연월'],   // 한 열에 연월이 같이 있는 경우
+  year: ['연도', '년도'],           // 연도와 월이 따로 있는 경우 ("2025년", "1월")
+  month: ['월'],
+  channel: ['채널'],
+  customer: ['고객명', '거래처', '거래처명'],
+  item: ['품목명', '품목'],
+  brand: ['브랜드명', '브랜드'],
+  cat1: ['대분류'],
+  cost: ['매입단가'],
+  qty: ['수량'],
+  gr: ['gr'],
+  tta: ['tta'],
+  nnr: ['netnetrevenue', 'nnr'],
+  vcogs: ['variablecogs'],
+  vdc: ['variabledc'],
+  mc: ['marginalcontribution', 'mc'],
+};
+
+const $ = (id) => document.getElementById(id);
+const state = { rows: [], fileName: '', notes: {}, filter: { year: 'all', channel: 'all', cat1: 'all' } };
+
+/* ───────── 유틸 ───────── */
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const normHeader = (s) => String(s == null ? '' : s).replace(/[\s 　"'“”]/g, '').toLowerCase();
+
+// 앞뒤 공백(줄바꿈·전각/비분리 공백 포함) 제거, 안쪽 연속 공백은 하나로
+const cleanText = (v) => (v == null ? '' : String(v).replace(/[\s 　]+/g, ' ').trim());
+
+// 숫자로 바꾸기: 비어 있거나 숫자가 아니면 null (오류를 내지 않는다)
+function num(v) {
+  if (typeof v === 'number') return isFinite(v) ? v : null;
+  if (v == null) return null;
+  let s = String(v).trim();
+  if (!s || s === '-' || s === '—') return null;
+  let neg = false;
+  if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); }
+  s = s.replace(/[,\s원₩]/g, '');
+  const n = Number(s);
+  if (s === '' || isNaN(n)) return null;
+  return neg ? -n : n;
+}
+
+const fmtM = (v) => { const r = Math.round(v / UNIT); return (r === 0 ? 0 : r).toLocaleString('en-US'); };
+const fmtPct = (p) => (p == null || !isFinite(p) ? '-' : (Math.round(p * 1000) / 10).toFixed(1) + '%');
+const ratio = (a, b) => (b > 0 ? a / b : null);          // 분모가 0 이하이면 비율을 만들지 않는다
+const negCls = (v) => (v < 0 ? ' class="neg"' : '');
+
+// 연도월 → {y, m}. 202401 / "2024-01" / "2024.1" / "2024년 1월" / 엑셀 날짜 모두 처리
+function parseYM(v) {
+  if (v instanceof Date && !isNaN(v)) return { y: v.getFullYear(), m: v.getMonth() + 1 };
+  if (typeof v === 'number') {
+    if (v >= 190001 && v <= 299912) {
+      const y = Math.floor(v / 100), m = v % 100;
+      return m >= 1 && m <= 12 ? { y, m } : null;
+    }
+    if (v >= 20000 && v < 190001) {
+      const d = XLSX.SSF.parse_date_code(v);
+      return d ? { y: d.y, m: d.m } : null;
+    }
+    return null;
+  }
+  const s = cleanText(v);
+  const mm = s.match(/^(\d{4})\s*[-./년_\s]?\s*(\d{1,2})/);
+  if (mm) {
+    const m = +mm[2];
+    if (m >= 1 && m <= 12) return { y: +mm[1], m };
+  }
+  return null;
+}
+
+// 연도 열: 2025 / "2025년" / "2025" / "25년" 모두 처리
+function parseYearCol(v) {
+  if (typeof v === 'number') return v >= 1900 && v <= 2999 ? Math.floor(v) : null;
+  const s = cleanText(v);
+  let m = s.match(/(\d{4})/);
+  if (m) return +m[1];
+  m = s.match(/^(\d{2})\s*년?$/);
+  return m ? 2000 + +m[1] : null;
+}
+
+// 월 열: 1 / "1월" / "01" 모두 처리
+function parseMonthCol(v) {
+  if (typeof v === 'number') return v >= 1 && v <= 12 ? Math.floor(v) : null;
+  const m = cleanText(v).match(/(\d{1,2})/);
+  return m && +m[1] >= 1 && +m[1] <= 12 ? +m[1] : null;
+}
+
+/* ───────── 엑셀 읽기 (브라우저 안에서만) ───────── */
+function parseWorkbook(wb) {
+  let sheetName = wb.SheetNames.find((n) => n === SHEET_NAME) ||
+                  wb.SheetNames.find((n) => normHeader(n) === normHeader(SHEET_NAME));
+  if (!sheetName) {
+    throw new Error(`“${SHEET_NAME}” 시트를 찾을 수 없습니다. (이 파일의 시트: ${wb.SheetNames.join(', ') || '없음'})`);
+  }
+  const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '', raw: true, blankrows: true });
+
+  // 3행이 머리글. 혹시 어긋나 있으면 위쪽 10행 안에서 '고객명'이 있는 행을 찾는다
+  const hasHeader = (row) => Array.isArray(row) && row.some((c) => COLS.customer.map(normHeader).includes(normHeader(c)));
+  let hdr = HEADER_ROW - 1;
+  const warnings = [];
+  if (!hasHeader(aoa[hdr])) {
+    const found = aoa.slice(0, 10).findIndex(hasHeader);
+    if (found < 0) throw new Error(`${HEADER_ROW}행에서 머리글(고객명 등)을 찾지 못했습니다. 1행 제목, 2행 주의문구, 3행 머리글 형식인지 확인해 주세요.`);
+    hdr = found;
+    warnings.push(`머리글이 ${found + 1}행에서 발견되어 그 행을 사용했습니다.`);
+  }
+
+  const headerNorm = aoa[hdr].map(normHeader);
+  const idx = {};
+  for (const [key, names] of Object.entries(COLS)) {
+    idx[key] = headerNorm.findIndex((h) => names.includes(h));
+  }
+  const missing = [];
+  if (idx.ym < 0 && idx.year < 0) missing.push('연도월 (또는 연도 + 월)');
+  if (idx.ym < 0 && idx.year >= 0 && idx.month < 0) warnings.push('“월” 열이 없어 월별 차트를 그릴 수 없습니다.');
+  if (idx.customer < 0) missing.push('고객명');
+  if (idx.item < 0) missing.push('품목명');
+  if (idx.gr < 0 && idx.nnr < 0) missing.push('GR 또는 Net Net Revenue');
+  if (missing.length) throw new Error(`필요한 열을 찾지 못했습니다: ${missing.join(', ')}`);
+  if (idx.channel < 0) warnings.push('“채널” 열이 없어 채널 구분 없이 표시합니다.');
+  if (idx.cat1 < 0) warnings.push('“대분류” 열이 없어 대분류 필터를 쓸 수 없습니다.');
+
+  const stats = { read: 0, skipped: 0, qtyZero: 0, costMissing: 0, unknownYM: 0, rawCustomers: new Set(), customers: new Set() };
+  const rows = [];
+
+  for (let i = hdr + 1; i < aoa.length; i++) {
+    const a = aoa[i];
+    if (!a) continue;
+    const get = (k) => (idx[k] >= 0 ? a[idx[k]] : '');
+
+    const customer = cleanText(get('customer'));
+    const item = cleanText(get('item'));
+    const ymText = cleanText(get(idx.ym >= 0 ? 'ym' : 'year'));
+    // 완전히 빈 줄, 고객·품목이 모두 없는 줄, 합계 줄은 건너뛴다
+    if (a.every((c) => c === '' || c == null)) continue;
+    if ((!customer && !item) || /합계|총계|소계|total/i.test(ymText)) { stats.skipped++; continue; }
+    stats.read++;
+
+    let y = null, m = null;
+    if (idx.ym >= 0) {
+      const p = parseYM(get('ym'));
+      if (p) { y = p.y; m = p.m; }
+    } else {
+      y = parseYearCol(get('year'));
+      m = idx.month >= 0 ? parseMonthCol(get('month')) : null;
+    }
+    const gr = num(get('gr')) ?? 0;
+    const tta = num(get('tta')) ?? 0;
+    const vcogs = num(get('vcogs')) ?? 0;
+    const vdc = num(get('vdc')) ?? 0;
+    // 엑셀에 계산된 값이 있으면 그 값을, 없으면 식으로 계산
+    const nnr = num(get('nnr')) ?? (gr - tta);
+    const mc = num(get('mc')) ?? (nnr - vcogs - vdc);
+
+    const qty = idx.qty >= 0 ? num(get('qty')) : null;
+    if (qty === 0) stats.qtyZero++;                         // 수량 0인 행도 버리지 않는다
+    if (idx.cost >= 0 && num(get('cost')) === null) stats.costMissing++;
+    if (y == null || m == null) stats.unknownYM++;
+    if (customer) { stats.customers.add(customer); stats.rawCustomers.add(String(get('customer'))); }
+
+    rows.push({
+      y: y != null ? String(y) : '미상',
+      ym: y != null && m != null ? `${y}-${String(m).padStart(2, '0')}` : '',
+      channel: cleanText(get('channel')) || '(미분류)',
+      cat1: cleanText(get('cat1')) || '(미분류)',
+      customer,
+      item: item || '(품목명 없음)',
+      brand: cleanText(get('brand')),
+      nnr, mc, gr,
+    });
+  }
+  if (!rows.length) throw new Error('읽을 수 있는 데이터 행이 없습니다.');
+  stats.mergedNames = stats.rawCustomers.size - stats.customers.size;
+  return { rows, stats, warnings, sheetName };
+}
+
+async function handleFile(file) {
+  if (!file) return;
+  setMsg('info', `“${file.name}” 읽는 중…`);
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array', cellFormula: false, cellHTML: false });
+    const { rows, stats, warnings } = parseWorkbook(wb);
+    state.rows = rows;
+    state.fileName = file.name;
+    state.notes = { stats, warnings };
+    state.filter = { year: 'all', channel: 'all', cat1: 'all' };
+    buildFilters();
+    $('dash').hidden = false;
+    $('printBtn').disabled = false;
+    $('drop').classList.add('compact');
+    $('dropTitle').textContent = `현재 파일: ${file.name}`;
+    $('dropSub').textContent = '다른 파일을 끌어다 놓거나 이 칸을 눌러 바꿀 수 있습니다.';
+    setMsg('', '');
+    renderAll();
+  } catch (e) {
+    setMsg('err', '파일을 읽지 못했습니다. ' + (e && e.message ? e.message : e));
+  } finally {
+    $('file').value = '';
+  }
+}
+
+function setMsg(kind, text) {
+  $('msg').innerHTML = text ? `<div class="msg ${kind}">${esc(text)}</div>` : '';
+}
+
+/* ───────── 필터 ───────── */
+function buildFilters() {
+  const uniq = (fn) => [...new Set(state.rows.map(fn))];
+  const years = uniq((r) => r.y).sort((a, b) => (a === '미상') - (b === '미상') || a.localeCompare(b));
+  const chans = uniq((r) => r.channel).sort((a, b) => a.localeCompare(b, 'ko'));
+  const cats = uniq((r) => r.cat1).sort((a, b) => a.localeCompare(b, 'ko'));
+  const fill = (id, list, allLabel) => {
+    $(id).innerHTML = `<option value="all">${allLabel}</option>` + list.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    $(id).value = 'all';
+  };
+  fill('fYear', years, '전체 연도');
+  fill('fChannel', chans, '전체 채널');
+  fill('fCat1', cats, '전체 대분류');
+}
+
+const getFiltered = () => {
+  const f = state.filter;
+  return state.rows.filter((r) =>
+    (f.year === 'all' || r.y === f.year) &&
+    (f.channel === 'all' || r.channel === f.channel) &&
+    (f.cat1 === 'all' || r.cat1 === f.cat1));
+};
+
+/* ───────── 집계 ───────── */
+function group(rows, keyFn) {
+  const m = new Map();
+  for (const r of rows) {
+    const k = keyFn(r);
+    let g = m.get(k);
+    if (!g) { g = { key: k, nnr: 0, mc: 0, gr: 0, n: 0, brand: '' }; m.set(k, g); }
+    g.nnr += r.nnr; g.mc += r.mc; g.gr += r.gr; g.n++;
+    if (!g.brand && r.brand) g.brand = r.brand;
+  }
+  return [...m.values()];
+}
+
+function niceScale(min, max, count) {
+  if (min === max) max = min + 1;
+  const raw = (max - min) / count;
+  const p = Math.pow(10, Math.floor(Math.log10(raw)));
+  const f = raw / p;
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+  const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
+  const ticks = [];
+  for (let t = lo; t <= hi + step / 2; t += step) ticks.push(Math.round(t * 1e6) / 1e6);
+  return { min: lo, max: hi, ticks };
+}
+
+/* ───────── 그리기 ───────── */
+function renderAll() {
+  const rows = getFiltered();
+  $('empty').hidden = rows.length > 0;
+  $('panels').hidden = rows.length === 0;
+  $('rowCount').textContent = `선택된 행 ${rows.length.toLocaleString('en-US')}개 / 전체 ${state.rows.length.toLocaleString('en-US')}개`;
+
+  const f = state.filter;
+  $('printMeta').textContent =
+    `파일: ${state.fileName} · 연도: ${f.year === 'all' ? '전체' : f.year} · 채널: ${f.channel === 'all' ? '전체' : f.channel} · ` +
+    `대분류: ${f.cat1 === 'all' ? '전체' : f.cat1} · 금액 단위: 백만원 · 출력일: ${new Date().toLocaleDateString('ko-KR')}`;
+
+  if (!rows.length) return;
+  const tot = rows.reduce((t, r) => { t.nnr += r.nnr; t.mc += r.mc; return t; }, { nnr: 0, mc: 0 });
+  renderCards(rows, tot);
+  renderMonthly(rows);
+  renderChannel(rows, tot);
+  renderItems(rows);
+  renderNegatives(rows);
+  renderCustomers(rows, tot);
+  renderNotes();
+}
+
+function renderCards(rows, tot) {
+  const custCount = new Set(rows.map((r) => r.customer).filter(Boolean)).size;
+  const mcPct = ratio(tot.mc, tot.nnr);
+  $('cards').innerHTML = `
+    <div class="card"><div class="k">총 NNR</div><div class="v"${negCls(tot.nnr)}>${fmtM(tot.nnr)}<small>백만원</small></div><div class="s">GR − TTA</div></div>
+    <div class="card"><div class="k">총 MC</div><div class="v"${negCls(tot.mc)}>${fmtM(tot.mc)}<small>백만원</small></div><div class="s">NNR − Variable COGS − Variable DC</div></div>
+    <div class="card"><div class="k">MC%</div><div class="v"${mcPct < 0 ? ' class="neg"' : ''}>${fmtPct(mcPct)}</div><div class="s">총 MC ÷ 총 NNR</div></div>
+    <div class="card"><div class="k">거래처 수</div><div class="v">${custCount.toLocaleString('en-US')}<small>곳</small></div><div class="s">공백 정리 후 같은 이름은 1곳</div></div>`;
+}
+
+function renderMonthly(rows) {
+  const g = group(rows.filter((r) => r.ym), (r) => r.ym).sort((a, b) => (a.key < b.key ? -1 : 1));
+  if (!g.length) { $('monthly').innerHTML = '<p class="none">월 정보가 있는 데이터가 없습니다.</p>'; return; }
+
+  const W = 900, H = 300, L = 70, R = 14, T = 26, B = 38;
+  const vals = g.map((x) => x.nnr / UNIT);
+  const sc = niceScale(Math.min(0, ...vals), Math.max(0, ...vals), 4);
+  const pw = W - L - R, ph = H - T - B;
+  const y = (v) => T + ph * (1 - (v - sc.min) / (sc.max - sc.min));
+  const slot = pw / g.length, bw = Math.min(56, slot * 0.62);
+  const showVal = g.length <= 16;
+  const skip = Math.ceil(g.length / 14);
+
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="월별 NNR 추이 막대차트">`;
+  for (const t of sc.ticks) {
+    s += `<line class="${t === 0 ? 'zero' : 'grid'}" x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}"/>`;
+    s += `<text x="${L - 8}" y="${y(t) + 4}" text-anchor="end">${t.toLocaleString('en-US')}</text>`;
+  }
+  g.forEach((d, i) => {
+    const v = vals[i];
+    const x = L + slot * i + (slot - bw) / 2;
+    const y0 = y(0), yv = y(v);
+    const top = Math.min(y0, yv), h = Math.max(1, Math.abs(y0 - yv));
+    const tip = `${d.key} · NNR ${fmtM(d.nnr)} · MC ${fmtM(d.mc)} · MC% ${fmtPct(ratio(d.mc, d.nnr))}`;
+    s += `<rect x="${x}" y="${top}" width="${bw}" height="${h}" rx="2" fill="${v < 0 ? '#D55E00' : PALETTE[0]}"><title>${esc(tip)}</title></rect>`;
+    if (showVal) {
+      s += `<text class="val" x="${x + bw / 2}" y="${v < 0 ? top + h + 13 : top - 5}" text-anchor="middle">${fmtM(d.nnr)}</text>`;
+    }
+    if (i % skip === 0) {
+      const label = g.length > 10 ? d.key.slice(2).replace('-', '.') : d.key;
+      s += `<text x="${x + bw / 2}" y="${H - 14}" text-anchor="middle">${label}</text>`;
+    }
+  });
+  s += '</svg>';
+  $('monthly').innerHTML = s;
+}
+
+function renderChannel(rows, tot) {
+  let g = group(rows, (r) => r.channel).sort((a, b) => b.nnr - a.nnr);
+  if (g.length > PALETTE.length) {
+    const head = g.slice(0, PALETTE.length - 1);
+    const rest = g.slice(PALETTE.length - 1);
+    const other = rest.reduce((o, x) => { o.nnr += x.nnr; o.mc += x.mc; return o; }, { key: `기타 (${rest.length}개 채널)`, nnr: 0, mc: 0 });
+    g = head.concat(other);
+  }
+  const share = (x) => ratio(x.nnr, tot.nnr);
+  const stack = g.map((x, i) => `<span style="width:${Math.max(0, (share(x) || 0) * 100)}%;background:${PALETTE[i]}" title="${esc(x.key)} ${fmtPct(share(x))}"></span>`).join('');
+  const body = g.map((x, i) => `<tr>
+      <td class="l" style="text-align:left"><span class="chip" style="background:${PALETTE[i]}"></span>${esc(x.key)}</td>
+      <td${negCls(x.nnr)}>${fmtM(x.nnr)}</td><td>${fmtPct(share(x))}</td><td${negCls(x.mc)}>${fmtM(x.mc)}</td><td${x.mc < 0 ? ' class="neg"' : ''}>${fmtPct(ratio(x.mc, x.nnr))}</td></tr>`).join('');
+  $('channel').innerHTML = `<div class="stack" aria-hidden="true">${stack}</div>
+    <div class="tablewrap"><table><thead><tr><th class="l" style="text-align:left">채널</th><th>NNR</th><th>비중</th><th>MC</th><th>MC%</th></tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+function renderItems(rows) {
+  const g = group(rows, (r) => r.item).sort((a, b) => b.nnr - a.nnr).slice(0, 10);
+  const max = Math.max(...g.map((x) => x.nnr), 1);
+  const body = g.map((x, i) => `<tr>
+      <td>${i + 1}</td><td class="l">${esc(x.key)}</td><td class="l">${esc(x.brand)}</td>
+      <td class="barcell${x.nnr < 0 ? ' neg' : ''}" style="--w:${Math.max(0, x.nnr / max * 100)}%">${fmtM(x.nnr)}</td>
+      <td${negCls(x.mc)}>${fmtM(x.mc)}</td><td${x.mc < 0 ? ' class="neg"' : ''}>${fmtPct(ratio(x.mc, x.nnr))}</td></tr>`).join('');
+  $('items').innerHTML = `<div class="tablewrap"><table><thead><tr><th>순위</th><th class="l">품목명</th><th class="l">브랜드</th><th>NNR</th><th>MC</th><th>MC%</th></tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+// MC%가 마이너스 = 품목별 합계 MC가 0보다 작은 품목 (NNR이 양수일 때 MC% < 0 과 같다)
+function renderNegatives(rows) {
+  const all = group(rows, (r) => r.item).filter((x) => x.mc < 0).sort((a, b) => a.mc - b.mc);
+  if (!all.length) { $('negatives').innerHTML = '<p class="none ok">없음</p>'; return; }
+  const LIMIT = 30;
+  const body = all.slice(0, LIMIT).map((x, i) => `<tr>
+      <td>${i + 1}</td><td class="l">${esc(x.key)}</td><td class="l">${esc(x.brand)}</td>
+      <td${negCls(x.nnr)}>${fmtM(x.nnr)}</td><td class="neg">${fmtM(x.mc)}</td><td class="neg">${fmtPct(ratio(x.mc, x.nnr))}</td></tr>`).join('');
+  const more = all.length > LIMIT ? `<p class="notes">MC가 가장 낮은 ${LIMIT}개만 표시했습니다. (마이너스 품목 총 ${all.length.toLocaleString('en-US')}개)</p>` : '';
+  $('negatives').innerHTML = `<p class="notes" style="margin:0 0 8px">마이너스 품목 ${all.length.toLocaleString('en-US')}개 · MC가 낮은 순</p>
+    <div class="tablewrap"><table><thead><tr><th>순위</th><th class="l">품목명</th><th class="l">브랜드</th><th>NNR</th><th>MC</th><th>MC%</th></tr></thead><tbody>${body}</tbody></table></div>${more}`;
+}
+
+function renderCustomers(rows, tot) {
+  const g = group(rows.filter((r) => r.customer), (r) => r.customer).sort((a, b) => b.nnr - a.nnr);
+  if (!g.length) { $('customers').innerHTML = '<p class="none">거래처 정보가 있는 데이터가 없습니다.</p>'; return; }
+  const top = g.slice(0, 10);
+  const share = (x) => ratio(x.nnr, tot.nnr);
+  const top10Share = ratio(top.reduce((s, x) => s + x.nnr, 0), tot.nnr);
+  const max = Math.max(top[0].nnr, 1);
+  const body = top.map((x, i) => `<tr>
+      <td>${i + 1}</td><td class="l">${esc(x.key)}</td>
+      <td class="barcell${x.nnr < 0 ? ' neg' : ''}" style="--w:${Math.max(0, x.nnr / max * 100)}%">${fmtM(x.nnr)}</td>
+      <td>${fmtPct(share(x))}</td><td${negCls(x.mc)}>${fmtM(x.mc)}</td><td${x.mc < 0 ? ' class="neg"' : ''}>${fmtPct(ratio(x.mc, x.nnr))}</td></tr>`).join('');
+  $('customers').innerHTML = `<div class="callout">1위 거래처 <b>${esc(top[0].key)}</b>의 비중: <b>${fmtPct(share(top[0]))}</b>
+      <span class="notes"> (전체 NNR 대비 · TOP 10 합계 ${fmtPct(top10Share)})</span></div>
+    <div class="tablewrap"><table><thead><tr><th>순위</th><th class="l">거래처</th><th>NNR</th><th>비중(%)</th><th>MC</th><th>MC%</th></tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+function renderNotes() {
+  const { stats, warnings } = state.notes;
+  const items = [
+    `읽은 행 ${stats.read.toLocaleString('en-US')}개` + (stats.skipped ? ` (고객명·품목명이 모두 없거나 합계인 ${stats.skipped}개 행은 제외)` : ''),
+    `수량이 0인 행 ${stats.qtyZero.toLocaleString('en-US')}개 (계산에 포함)`,
+    `매입단가가 비어 있는 행 ${stats.costMissing.toLocaleString('en-US')}개 (오류 없이 처리)`,
+    `앞뒤 공백 차이로 합쳐진 거래처 이름 ${stats.mergedNames.toLocaleString('en-US')}개`,
+  ];
+  if (stats.unknownYM) items.push(`연도·월을 알 수 없는 행 ${stats.unknownYM}개 (월별 차트에서는 제외, 연도를 모르면 연도 “미상”)`);
+  warnings.forEach((w) => items.push(w));
+  items.push('MC%는 행별 값을 평균내지 않고, 집계한 MC ÷ 집계한 NNR로 다시 계산합니다.');
+  $('notes').innerHTML = `데이터 처리 내역<ul>${items.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`;
+}
+
+/* ───────── 이벤트 ───────── */
+const dropEl = $('drop'), fileEl = $('file');
+dropEl.addEventListener('click', () => fileEl.click());
+dropEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileEl.click(); } });
+fileEl.addEventListener('change', () => handleFile(fileEl.files[0]));
+
+// 창 어디에 놓아도 파일이 브라우저에서 열리지 않고 대시보드로 들어오게 한다
+['dragenter', 'dragover'].forEach((t) => window.addEventListener(t, (e) => { e.preventDefault(); dropEl.classList.add('over'); }));
+window.addEventListener('dragleave', (e) => { if (!e.relatedTarget) dropEl.classList.remove('over'); });
+window.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropEl.classList.remove('over');
+  handleFile(e.dataTransfer && e.dataTransfer.files[0]);
+});
+
+const bindFilter = (id, key) => $(id).addEventListener('change', (e) => { state.filter[key] = e.target.value; renderAll(); });
+bindFilter('fYear', 'year');
+bindFilter('fChannel', 'channel');
+bindFilter('fCat1', 'cat1');
+$('resetBtn').addEventListener('click', () => {
+  state.filter = { year: 'all', channel: 'all', cat1: 'all' };
+  ['fYear', 'fChannel', 'fCat1'].forEach((id) => { $(id).value = 'all'; });
+  renderAll();
+});
+$('printBtn').addEventListener('click', () => window.print());
+</script>
+</body>
+</html>
