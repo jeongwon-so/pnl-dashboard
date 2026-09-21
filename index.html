@@ -39,6 +39,7 @@
   h2 { font-size: 16px; margin: 0 0 12px; }
   .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
   .top p { margin: 2px 0 0; color: var(--sub); font-size: 13px; }
+  .top p.basis { color: var(--ink); font-size: 15px; font-weight: 600; }
 
   button, select {
     font: inherit; color: inherit;
@@ -78,6 +79,7 @@
   .printhead { display: none; margin-bottom: 10px; }
   .printhead h1 { font-size: 20px; }
   .printhead p { margin: 2px 0 0; font-size: 12px; color: #444; }
+  .printhead p.basis { font-size: 14px; font-weight: 600; color: #1c2430; }
 
   .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
@@ -144,6 +146,7 @@
   <header class="top no-print">
     <div>
       <h1>엑셀 손익 대시보드</h1>
+      <p class="basis">2026년 상반기 기준</p>
       <p>엑셀 파일은 이 브라우저 안에서만 읽습니다. 서버로 보내거나 저장하지 않습니다.</p>
     </div>
     <button id="printBtn" class="primary" type="button" disabled>보고서 인쇄</button>
@@ -160,6 +163,7 @@
   <main id="dash" hidden>
     <div class="printhead">
       <h1>손익 보고서</h1>
+      <p class="basis">2026년 상반기 기준</p>
       <p id="printMeta"></p>
     </div>
 
